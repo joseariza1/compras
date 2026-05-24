@@ -1,7 +1,8 @@
 const CACHE_NAME = 'insumos-cache-v1';
 const ASSETS = [
-  'index.html',
-  'manifest.json',
+ './',               // <--- Guarda la página de inicio del repositorio
+  './index.html',     // <--- Nota el punto antes de la barra
+  './manifest.json',  // <--- Nota el punto antes de la barra
   'https://cdn.tailwindcss.com',
   'https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js',
   'https://fonts.googleapis.com/css2?family=Inter:wght=400;700;900&display=swap'
