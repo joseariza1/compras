@@ -1,4 +1,4 @@
-const CACHE_NAME = 'insumos-cache-v1';
+const CACHE_NAME = 'insumos-cache-v2';
 const ASSETS = [
  './',               // <--- Guarda la página de inicio del repositorio
   './index.html',     // <--- Nota el punto antes de la barra
