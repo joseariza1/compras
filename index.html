@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Insumos Pro - Smart Drag & Sort</title>
+    
+    <!-- Vincular el manifiesto para que sea instalable -->
+<link rel="manifest" href="manifest.json">
+
+<!-- Registrar el Service Worker al cargar la página -->
+<script>
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('sw.js')
+                .then(reg => console.log('Service Worker activo con éxito', reg))
+                .catch(err => console.error('Error al registrar el Service Worker', err));
+        });
+    }
+</script>
+    
+    
+    
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- SortableJS para permitir arrastrar y deslizar tarjetas de forma nativa en móviles -->
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+        
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background-color: #f4f4f4;
+            color: #000; 
+            margin: 0; 
+            font-size: 13px;
+            user-select: none; /* Evita selección de texto accidental al deslizar */
+        }
+
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        .shop-card {
+            background: white;
+            border: 2px solid #000;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            overflow: hidden;
+            box-shadow: 0 4px 0px rgba(0,0,0,1);
+            touch-action: none; /* Optimiza el arrastre en dispositivos táctiles */
+        }
+
+        .shop-header { 
+            background: #000;
+            color: #fff;
+            padding: 12px 15px; 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            cursor: grab;
+        }
+
+        .shop-header:active {
+            cursor: grabbing;
+        }
+        
+        .sucursal-tag { 
+            display: inline-block;
+            background: #eee;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 9px; 
+            font-weight: 900; 
+            text-transform: uppercase; 
+            color: #444;
+            margin: 10px 15px 5px 15px;
+        }
+        
+        .product-row { 
+            display: flex; 
+            align-items: center; 
+            padding: 12px 15px; 
+            gap: 12px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .best-price-badge {
+            background: #000;
+            color: #fff;
+            font-size: 8px;
+            font-weight: 900;
+            padding: 2px 5px;
+            border-radius: 3px;
+            margin-left: 5px;
+        }
+
+        .best-deal-row { 
+            background: #fffbeb;
+            border-left: 6px solid #000;
+        }
+
+        .bought { opacity: 0.2; filter: grayscale(1); }
+        
+        nav { 
+            position: fixed; bottom: 15px; left: 50%; transform: translateX(-50%);
+            width: 90%; max-width: 350px; 
+            background: #000; border-radius: 14px; padding: 5px; 
+            display: flex; z-index: 60;
+        }
+        .nav-btn { flex: 1; padding: 12px; border-radius: 10px; font-size: 10px; font-weight: 800; color: #fff; text-align: center; }
+        .nav-active { background: #fff; color: #000; }
+
+        .fab-main { 
+            position: fixed; bottom: 85px; right: 20px;
+            width: 50px; height: 50px; 
+            background: #000; color: #fff; 
+            border-radius: 50%; border: 3px solid #fff;
+            font-size: 24px; display: flex; align-items: center; justify-content: center; 
+            z-index: 100;
+        }
+
+        input, select, textarea { 
+            border: 2px solid #000 !important; 
+            padding: 10px !important; border-radius: 8px; font-weight: 700;
+            width: 100%;
+        }
+
+        .modal-overlay { background: rgba(0,0,0,0.8); }
+
+        /* Estilo sutil para la tarjeta que se está moviendo */
+        .sortable-ghost {
+            opacity: 0.4;
+            transform: scale(0.98);
+        }
+    </style>
+</head>
+<body class="pb-32">
+
+    <header class="p-6 pt-10 flex justify-between items-end">
+        <div>
+            <h2 class="text-[10px] font-black uppercase tracking-widest text-gray-500">Saldo Restante (Solo Mejor Opción)</h2>
+            <h1 id="budget-display" class="text-4xl font-black tracking-tighter leading-none">$0.00</h1>
+        </div>
+        <button onclick="setBudget()" class="bg-black text-white text-[9px] font-black px-3 py-2 rounded-lg uppercase tracking-wider">Presupuesto</button>
+    </header>
+
+    <div class="px-6 mb-4">
+        <input type="text" id="global-search" oninput="updateUI()" placeholder="BUSCAR..." class="uppercase text-[11px]">
+    </div>
+
+    <main class="px-4 max-w-xl mx-auto">
+        <!-- El contenedor ahora tiene una ID para que SortableJS lo controle -->
+        <div id="compras" class="tab-content active"></div>
+        <div id="comparativa" class="tab-content">
+            <h2 class="font-black text-lg mb-4 uppercase">Comparativa de Precios</h2>
+            <div id="comparison-list" class="space-y-3"></div>
+        </div>
+        <div id="proveedores" class="tab-content"></div>
+    </main>
+
+    <nav>
+        <button onclick="showTab('compras')" id="btn-compras" class="nav-btn nav-active">LISTA</button>
+        <button onclick="showTab('comparativa')" id="btn-comparativa" class="nav-btn">AHORRO</button>
+        <button onclick="showTab('proveedores')" id="btn-proveedores" class="nav-btn">TIENDAS</button>
+    </nav>
+
+    <button onclick="toggleFabMenu()" class="fab-main" id="fab-main-btn">+</button>
+    
+    <div id="fab-options" class="hidden fixed bottom-32 right-6 z-[110] flex flex-col gap-3">
+        <button onclick="resetAndOpen('modal-producto')" class="bg-black text-white px-5 py-3 rounded-xl font-black text-[11px] border-2 border-white shadow-2xl">NUEVO PRODUCTO</button>
+        <button onclick="resetAndOpen('modal-proveedor')" class="bg-black text-white px-5 py-3 rounded-xl font-black text-[11px] border-2 border-white shadow-2xl">NUEVA TIENDA</button>
+    </div>
+
+    <!-- MODALES -->
+    <div id="modal-producto" class="modal-overlay fixed inset-0 hidden z-[200] items-center justify-center p-4" onclick="closeModal('modal-producto')">
+        <div class="bg-white p-6 rounded-2xl w-full max-w-sm" onclick="event.stopPropagation()">
+            <h2 class="font-black text-xl mb-4">Producto</h2>
+            <input type="hidden" id="p-id">
+            <input type="text" id="p-nombre" placeholder="NOMBRE" class="uppercase">
+            <select id="p-destino" class="mt-3"></select>
+            <div class="flex gap-2 mt-3">
+                <input type="number" id="p-precio" placeholder="PRECIO $">
+                <input type="number" id="p-cant" value="1" class="w-20">
+            </div>
+            <button onclick="saveProduct()" class="w-full bg-black text-white font-black py-4 mt-6 rounded-xl text-sm">GUARDAR</button>
+            <button id="btn-del-p" onclick="deleteProduct()" class="hidden w-full text-red-600 font-black mt-4 text-xs">ELIMINAR PRODUCTO</button>
+        </div>
+    </div>
+
+    <div id="modal-proveedor" class="modal-overlay fixed inset-0 hidden z-[200] items-center justify-center p-4" onclick="closeModal('modal-proveedor')">
+        <div class="bg-white p-6 rounded-2xl w-full max-w-sm" onclick="event.stopPropagation()">
+            <h2 class="font-black text-xl mb-4">Tienda</h2>
+            <input type="hidden" id="v-id">
+            <input type="text" id="v-nombre" placeholder="NOMBRE DEL NEGOCIO" class="uppercase">
+            <input type="text" id="v-fb" placeholder="LINK (FB/WEB)">
+            <textarea id="v-notas" placeholder="NOTAS O HORARIOS" rows="2" class="mt-2 text-xs"></textarea>
+            <div id="sucursales-list" class="mt-3 space-y-2"></div>
+            <button onclick="addSucursalRow()" class="text-[10px] font-black mt-2 underline uppercase">+ Sucursal</button>
+            <button onclick="saveVendor()" class="w-full bg-black text-white font-black py-4 mt-6 rounded-xl text-sm">REGISTRAR</button>
+        </div>
+    </div>
+
+    <script>
+        const initialData = {
+            budget: 0,
+            products: [],
+            vendors: [],
+            collapsed: [],
+            shopOrder: [] // Guarda el orden personalizado de las tiendas
+        };
+
+        let db = JSON.parse(localStorage.getItem('insumos_final_v7')) || initialData;
+
+        window.onload = () => {
+            updateUI();
+            initSortable();
+        };
+
+        function saveData() {
+            localStorage.setItem('insumos_final_v7', JSON.stringify(db));
+            updateUI();
+        }
+
+        // Inicializa el deslizamiento de tarjetas
+        function initSortable() {
+            const el = document.getElementById('compras');
+            Sortable.create(el, {
+                animation: 200,
+                handle: '.shop-header', // El arrastre se activa desde la cabecera negra
+                ghostClass: 'sortable-ghost',
+                onEnd: function () {
+                    // Mapear el nuevo orden basado en el atributo data-shop
+                    const cards = el.querySelectorAll('.shop-card');
+                    db.shopOrder = Array.from(cards).map(card => card.getAttribute('data-shop'));
+                    localStorage.setItem('insumos_final_v7', JSON.stringify(db));
+                }
+            });
+        }
+
+        function resetAndOpen(modalId) {
+            if(modalId === 'modal-producto') {
+                document.getElementById('p-id').value = '';
+                document.getElementById('p-nombre').value = '';
+                document.getElementById('p-precio').value = '';
+                document.getElementById('p-cant').value = '1';
+                document.getElementById('btn-del-p').classList.add('hidden');
+            } else {
+                document.getElementById('v-id').value = '';
+                document.getElementById('v-nombre').value = '';
+                document.getElementById('v-fb').value = '';
+                document.getElementById('v-notas').value = '';
+                document.getElementById('sucursales-list').innerHTML = '';
+            }
+            openModal(modalId);
+        }
+
+        function updateUI() {
+            const search = document.getElementById('global-search').value.toLowerCase();
+            const bestPrices = {};
+            const bestProductObjects = {}; 
+            
+            db.products.forEach(p => {
+                const n = p.name.toLowerCase().trim();
+                if (!bestPrices[n] || p.price < bestPrices[n]) {
+                    bestPrices[n] = p.price;
+                }
+            });
+
+            db.products.forEach(p => {
+                const n = p.name.toLowerCase().trim();
+                if (p.price === bestPrices[n]) {
+                    if (!bestProductObjects[n] || (bestProductObjects[n].bought && !p.bought)) {
+                        bestProductObjects[n] = p;
+                    }
+                }
+            });
+
+            const gastadoInteligente = db.products.reduce((acc, p) => {
+                const n = p.name.toLowerCase().trim();
+                const esElMasBaratoRegistrado = bestProductObjects[n] && bestProductObjects[n].id === p.id;
+                if (!p.bought && esElMasBaratoRegistrado) {
+                    return acc + (p.price * p.qty);
+                }
+                return acc;
+            }, 0);
+
+            document.getElementById('budget-display').innerText = `$${(db.budget - gastadoInteligente).toLocaleString()}`;
+
+            // Listar y filtrar tiendas de la lista de compras
+            const container = document.getElementById('compras');
+            container.innerHTML = '';
+            const filtered = db.products.filter(p => p.name.toLowerCase().includes(search));
+            
+            let shops = [...new Set(filtered.map(p => p.shop))];
+
+            // Aplicar orden personalizado si existe en memoria
+            if (db.shopOrder && db.shopOrder.length > 0) {
+                shops.sort((a, b) => {
+                    let idxA = db.shopOrder.indexOf(a);
+                    let idxB = db.shopOrder.indexOf(b);
+                    if (idxA === -1) idxA = 999;
+                    if (idxB === -1) idxB = 999;
+                    return idxA - idxB;
+                });
+            }
+
+            shops.forEach(shopName => {
+                const isCollapsed = db.collapsed.includes(shopName);
+                const shopItems = filtered.filter(p => p.shop === shopName);
+                const shopTotal = shopItems.filter(p => !p.bought).reduce((acc, p) => acc + (p.price * p.qty), 0);
+                
+                const card = document.createElement('div');
+                card.className = "shop-card";
+                card.setAttribute('data-shop', shopName); // Atributo clave para guardar orden
+                
+                let h = `
+                    <div class="shop-header">
+                        <div class="flex flex-col" onclick="toggleCollapse('${shopName}')" style="flex:1;">
+                            <span class="font-black text-[11px] uppercase tracking-wider">☰ ${shopName}</span>
+                            <span class="text-[9px] font-bold opacity-80">Total Tienda: $${shopTotal.toLocaleString()}</span>
+                        </div>
+                        <span onclick="toggleCollapse('${shopName}')" class="text-[10px] font-black border border-white/30 px-2 py-0.5 rounded ml-2">${isCollapsed ? 'VER' : 'OK'}</span>
+                    </div>
+                    <div class="${isCollapsed ? 'hidden' : ''} pb-2">`;
+
+                const sucsInShop = [...new Set(shopItems.map(p => p.suc))];
+                sucsInShop.forEach(sucName => {
+                    h += `<div class="sucursal-tag">${sucName}</div>`;
+                    
+                    // CAMBIO AQUÍ: Ordenar por defecto los productos por precio (Menor a Mayor)
+                    const orderedItems = shopItems.filter(p => p.suc === sucName).sort((a,b) => a.price - b.price);
+                    
+                    orderedItems.forEach(p => {
+                        const n = p.name.toLowerCase().trim();
+                        const isBest = p.price === bestPrices[n] && db.products.filter(x => x.name.toLowerCase().trim() === n).length > 1;
+                        h += `
+                            <div class="product-row ${p.bought ? 'bought' : ''} ${isBest && !p.bought ? 'best-deal-row' : ''}">
+                                <input type="checkbox" ${p.bought ? 'checked' : ''} onchange="toggleBought('${p.id}')" class="w-5 h-5 accent-black">
+                                <div class="flex-1" onclick="editProduct('${p.id}')">
+                                    <p class="text-[12px] font-black m-0 uppercase">${p.name} ${isBest && !p.bought ? '<span class="best-price-badge">Ahorro</span>' : ''}</p>
+                                    <p class="text-[10px] font-bold text-gray-500">$${p.price} x ${p.qty}</p>
+                                </div>
+                                <p class="font-black text-sm">$${(p.price*p.qty).toLocaleString()}</p>
+                            </div>`;
+                    });
+                });
+                card.innerHTML = h + `</div>`;
+                container.appendChild(card);
+            });
+
+            // Tiendas
+            document.getElementById('proveedores').innerHTML = db.vendors.map(v => `
+                <div class="bg-white border-2 border-black p-4 rounded-xl mb-4">
+                    <div class="flex justify-between items-start border-b-2 border-black pb-2 mb-2">
+                        <h3 class="font-black text-sm uppercase">${v.name}</h3>
+                        <div class="flex gap-4">
+                            <button onclick="editVendor('${v.id}')" class="text-[10px] font-black underline">EDITAR</button>
+                            <button onclick="deleteVendor('${v.id}')" class="text-[10px] font-black text-red-600 underline">BORRAR</button>
+                        </div>
+                    </div>
+                    ${v.fb ? `<p class="text-[10px] font-bold mb-1">🔗 <span class="underline">${v.fb}</span></p>` : ''}
+                    ${v.notas ? `<p class="text-[10px] text-gray-600 font-medium mb-3 bg-gray-50 p-2 rounded border border-dashed border-gray-300 italic">"${v.notas}"</p>` : ''}
+                    <div class="flex flex-wrap gap-2">
+                        ${v.sucursales.map(s => `<span class="bg-black text-white px-2 py-1 rounded text-[8px] font-black uppercase">${s}</span>`).join('')}
+                    </div>
+                </div>`).join('');
+
+            // Comparativa
+            const productNames = [...new Set(db.products.map(p => p.name.toLowerCase().trim()))];
+            document.getElementById('comparison-list').innerHTML = productNames.map(name => {
+                const options = db.products.filter(p => p.name.toLowerCase().trim() === name).sort((a,b) => a.price - b.price);
+                return `<div class="bg-white border-2 border-black/10 p-3 rounded-xl">
+                    <h4 class="font-black text-[9px] uppercase mb-2 text-gray-400">${name}</h4>
+                    ${options.map(o => `<div class="flex justify-between text-[11px] py-1 ${o.price === bestPrices[name] ? 'font-black' : 'text-gray-400'}">
+                        <span>${o.shop} (${o.suc})</span><span>$${o.price} ${o.price === bestPrices[name] ? '🏆' : ''}</span>
+                    </div>`).join('')}</div>`;
+            }).join('');
+
+            const sel = document.getElementById('p-destino');
+            sel.innerHTML = '<option value="" disabled selected>ELEGIR TIENDA</option>';
+            db.vendors.forEach(v => {
+                const group = document.createElement('optgroup'); group.label = v.name;
+                if(v.sucursales.length === 0) group.appendChild(new Option("PRINCIPAL", `${v.name}|PRINCIPAL`));
+                else v.sucursales.forEach(s => group.appendChild(new Option(s, `${v.name}|${s}`)));
+                sel.appendChild(group);
+            });
+        }
+
+        function showTab(id) {
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
+            document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('nav-active'));
+            document.getElementById('btn-' + id).classList.add('nav-active');
+        }
+        function openModal(id) { 
+            document.getElementById(id).classList.remove('hidden'); 
+            document.getElementById(id).classList.add('flex');
+            if(!document.getElementById('fab-options').classList.contains('hidden')) toggleFabMenu();
+        }
+        function closeModal(id) { document.getElementById(id).classList.add('hidden'); document.getElementById(id).classList.remove('flex'); }
+        function toggleCollapse(shop) { db.collapsed.includes(shop) ? db.collapsed = db.collapsed.filter(s => s !== shop) : db.collapsed.push(shop); saveData(); }
+        function toggleBought(id) { const p = db.products.find(x => x.id === id); p.bought = !p.bought; saveData(); }
+        function setBudget() { const val = prompt("Dinero disponible:", db.budget); if(val !== null) { db.budget = parseFloat(val) || 0; saveData(); } }
+        function addSucursalRow(val = "") {
+            const div = document.createElement('div');
+            div.className = "flex gap-2";
+            div.innerHTML = `<input type="text" value="${val}" class="suc-input !mt-0 flex-1" placeholder="NOMBRE SUCURSAL"><button onclick="this.parentElement.remove()" class="font-black px-2">×</button>`;
+            document.getElementById('sucursales-list').appendChild(div);
+        }
+        function saveVendor() {
+            const name = document.getElementById('v-nombre').value.trim();
+            if(!name) return;
+            const sucs = Array.from(document.querySelectorAll('.suc-input')).map(i => i.value.trim()).filter(v => v);
+            const vendor = { id: document.getElementById('v-id').value || Date.now().toString(), name, fb: document.getElementById('v-fb').value, notas: document.getElementById('v-notas').value, sucursales: sucs };
+            const idx = db.vendors.findIndex(v => v.id === vendor.id);
+            idx > -1 ? db.vendors[idx] = vendor : db.vendors.push(vendor);
+            closeModal('modal-proveedor'); saveData();
+        }
+        function saveProduct() {
+            const name = document.getElementById('p-nombre').value.trim();
+            const dest = document.getElementById('p-destino').value;
+            const price = parseFloat(document.getElementById('p-precio').value);
+            if(!name || !dest || isNaN(price)) return;
+            const [shop, suc] = dest.split('|');
+            const prod = { id: document.getElementById('p-id').value || Date.now().toString(), name, shop, suc, price, qty: parseInt(document.getElementById('p-cant').value) || 1, bought: false };
+            const idx = db.products.findIndex(p => p.id === prod.id);
+            idx > -1 ? db.products[idx] = prod : db.products.push(prod);
+            closeModal('modal-producto'); saveData();
+        }
+        function editVendor(id) {
+            const v = db.vendors.find(x => x.id === id);
+            document.getElementById('v-id').value = v.id;
+            document.getElementById('v-nombre').value = v.name;
+            document.getElementById('v-fb').value = v.fb;
+            document.getElementById('v-notas').value = v.notas;
+            document.getElementById('sucursales-list').innerHTML = '';
+            v.sucursales.forEach(s => addSucursalRow(s));
+            openModal('modal-proveedor');
+        }
+        function editProduct(id) {
+            const p = db.products.find(x => x.id === id);
+            document.getElementById('p-id').value = p.id;
+            document.getElementById('p-nombre').value = p.name;
+            document.getElementById('p-precio').value = p.price;
+            document.getElementById('p-cant').value = p.qty;
+            document.getElementById('p-destino').value = `${p.shop}|${p.suc}`;
+            document.getElementById('btn-del-p').classList.remove('hidden');
+            openModal('modal-producto');
+        }
+        function deleteVendor(id) { if(confirm("¿Borrar tienda?")) { db.vendors = db.vendors.filter(v => v.id !== id); saveData(); } }
+        function deleteProduct() { if(confirm("¿Borrar producto?")) { db.products = db.products.filter(p => p.id !== document.getElementById('p-id').value); closeModal('modal-producto'); saveData(); } }
+        function toggleFabMenu() {
+            const menu = document.getElementById('fab-options');
+            menu.classList.toggle('hidden');
+            document.getElementById('fab-main-btn').innerText = menu.classList.contains('hidden') ? '+' : '×';
+        }
+    </script>
+</body>
+</html>
