@@ -16,6 +16,10 @@
         📲 Instalar App
     </button>
 
+    <div id="offline-banner" class="hidden bg-amber-600 text-white text-xs font-bold text-center py-1.5 px-4 shadow-md sticky top-0 z-50 animate-pulse">
+        ⚠️ Modo sin conexión: Trabajando de forma local
+    </div>
+
     <main class="max-w-4xl mx-auto p-4 pb-28 pt-6">
         
         <section id="sec-compras" class="space-y-4">
@@ -196,6 +200,19 @@
         let ordenCategorias = JSON.parse(localStorage.getItem('pwa_orden_categorias')) || [];
         let currentTab = 'compras';
         let tempSucursales = [];
+
+        // Monitoreo de estado de red nativo
+        function updateOnlineStatus() {
+            const banner = document.getElementById('offline-banner');
+            if (navigator.onLine) {
+                banner.classList.add('hidden');
+            } else {
+                banner.classList.remove('hidden');
+            }
+        }
+        window.addEventListener('online', updateOnlineStatus);
+        window.addEventListener('offline', updateOnlineStatus);
+        updateOnlineStatus(); // Evaluación inicial
 
         function switchTab(tab) {
             currentTab = tab;
@@ -493,7 +510,7 @@
         // --- RENDERIZADO GENERAL ---
         function renderAll() {
             
-            // 1. EVALUAR MEJORES PRECIOS Y CONTAR DUPLICADOS EN TIEMPO REAL
+            // 1. EVALUAR MEJORES PRECIOS Y CONTAR DUPLICADOS
             const mejoresPreciosPorProducto = {};
             const conteoProductos = {};
 
@@ -528,7 +545,7 @@
             document.getElementById('budget-comprado').innerText = `$${acumuladoComprado.toFixed(2)}`;
             document.getElementById('contador-compras').innerText = `${compras.filter(c => !c.comprado).length} pendientes`;
 
-            // 3. FILTRADO Y AGRUPACIÓN DE LA LISTA DE COMPRAS INTERACTIVA
+            // 3. FILTRADO Y AGRUPACIÓN DE LA LISTA DE COMPRAS
             const listaComprasEl = document.getElementById('lista-compras');
             listaComprasEl.innerHTML = '';
 
@@ -549,12 +566,14 @@
                     const sucursalNombre = item.proveedor ? item.sucursal : '📍 Ubicación general';
 
                     if (!mapaAgrupado[provId]) {
-                        mapaAgrupado[provId] = { nombre: provNombre, sucursales: {} };
+                        mapaAgrupado[provId] = { nombre: provNombre, sucursales: {}, totalProveedor: 0 };
                     }
                     if (!mapaAgrupado[provId].sucursales[sucursalNombre]) {
                         mapaAgrupado[provId].sucursales[sucursalNombre] = [];
                     }
                     mapaAgrupado[provId].sucursales[sucursalNombre].push(item);
+                    // Sumamos el total del producto al total del proveedor
+                    mapaAgrupado[provId].totalProveedor += (item.precioUnitario * item.cantidad);
                 });
 
                 const categoriasOrdenadas = Object.keys(mapaAgrupado).sort((a, b) => {
@@ -573,11 +592,13 @@
                     provContainer.className = "bg-gray-50/40 border-b border-gray-200 last:border-b-0 py-1";
                     provContainer.setAttribute('data-id', provId);
                     
+                    // Aquí agregamos el total formateado del proveedor
                     provContainer.innerHTML = `
                         <div class="bg-indigo-50/80 px-4 py-2.5 font-black text-xs text-indigo-900 uppercase tracking-wider border-b border-indigo-100/60 flex items-center justify-between select-none active:cursor-grabbing">
                             <span class="flex items-center gap-2">
                                 <span class="text-indigo-400 text-sm font-normal">⋮⋮</span> ${grupoProveedor.nombre}
                             </span>
+                            <span class="bg-indigo-600 text-white px-2 py-0.5 rounded text-[10px] shadow-xs">Total: $${grupoProveedor.totalProveedor.toFixed(2)}</span>
                         </div>
                     `;
 
@@ -598,39 +619,19 @@
                         productos.forEach(item => {
                             const subtotal = item.precioUnitario * item.cantidad;
                             const nombreNormalizado = item.producto.toLowerCase().trim();
-                            
                             const esElMasBarato = (mejoresPreciosPorProducto[nombreNormalizado].id === item.id);
                             const tieneDuplicados = conteoProductos[nombreNormalizado] > 1;
 
-                            let badgePrecioHtml = '';
-                            let highlightBordeClass = '';
-                            
-                            if (tieneDuplicados) {
-                                if (esElMasBarato) {
-                                    badgePrecioHtml = `<span class="bg-emerald-100 text-emerald-800 text-[10px] font-extrabold px-1.5 py-0.5 rounded border border-emerald-200 shrink-0">⭐ Mejor Opción</span>`;
-                                    highlightBordeClass = 'border-l-4 border-emerald-500';
-                                } else {
-                                    badgePrecioHtml = `<span class="bg-gray-100 text-gray-400 text-[10px] font-medium px-1.5 py-0.5 rounded border border-gray-200 shrink-0">Alternativa más cara</span>`;
-                                }
-                            }
-
                             const li = document.createElement('li');
-                            li.className = `p-4 pl-6 flex items-center justify-between transition-all cursor-pointer hover:bg-gray-50/80 ${item.comprado ? 'bg-gray-50/30 opacity-55' : 'bg-white'} ${highlightBordeClass}`;
-                            
+                            li.className = `p-4 pl-6 flex items-center justify-between transition-all cursor-pointer hover:bg-gray-50/80 ${item.comprado ? 'bg-gray-50/30 opacity-55' : 'bg-white'}`;
                             li.onclick = () => openModal(item.id);
-
                             li.innerHTML = `
                                 <div class="flex items-center space-x-3 flex-1 min-w-0">
                                     <input type="checkbox" ${item.comprado ? 'checked' : ''} onchange="toggleCompra(${item.id})" onclick="event.stopPropagation()" class="h-5 w-5 text-indigo-600 rounded focus:ring-indigo-500 shrink-0 cursor-pointer">
                                     <div class="min-w-0 flex-1">
-                                        <div class="flex items-center gap-2 flex-wrap">
-                                            <p class="font-bold text-gray-800 text-base tracking-tight truncate ${item.comprado ? 'line-through text-gray-400' : ''}">${item.producto}</p>
-                                            ${badgePrecioHtml}
-                                        </div>
+                                        <p class="font-bold text-gray-800 text-base tracking-tight truncate ${item.comprado ? 'line-through text-gray-400' : ''}">${item.producto}</p>
                                         <p class="text-xs text-gray-500 mt-0.5">
-                                            <span class="font-semibold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">${item.cantidad} pzas</span> 
-                                            × $${item.precioUnitario.toFixed(2)} = <span class="font-black text-gray-700">$${subtotal.toFixed(2)}</span>
-                                            ${(tieneDuplicados && !esElMasBarato) ? '<span class="text-red-500 text-[11px] block sm:inline sm:ml-1 font-medium">(No sumado al presupuesto total)</span>' : ''}
+                                            <span class="font-semibold text-indigo-600">$${item.precioUnitario.toFixed(2)}</span> × ${item.cantidad} = <span class="font-black text-gray-700">$${subtotal.toFixed(2)}</span>
                                         </p>
                                     </div>
                                 </div>
@@ -647,7 +648,8 @@
                 });
             }
 
-            // 4. RENDER DE SECCIÓN: SECCIÓN DE MEJORES PRECIOS ("SÚPER PRECIOS") WITH SEARCH
+    
+            // 4. RENDER DE SECCIÓN: SECCIÓN DE MEJORES PRECIOS
             const listaAhorrosEl = document.getElementById('lista-ahorros');
             listaAhorrosEl.innerHTML = '';
             
@@ -708,7 +710,8 @@
                     });
                 }
             }
-
+            
+            
             // 5. RENDER LISTA DE PROVEEDORES (ORDENADOS ALFABÉTICAMENTE + CON BUSCADOR)
             const listaProvEl = document.getElementById('lista-proveedores');
             listaProvEl.innerHTML = '';
@@ -718,10 +721,7 @@
                 return;
             }
 
-            // Ordenamiento alfabético nativo (A-Z)
             const proveedoresOrdenados = [...proveedores].sort((a, b) => a.nombre.localeCompare(b.nombre));
-
-            // Filtro aplicado desde el nuevo buscador de proveedores
             const queryProveedores = document.getElementById('search-proveedores').value.toLowerCase().trim();
             const proveedoresFiltrados = proveedoresOrdenados.filter(p => p.nombre.toLowerCase().includes(queryProveedores));
 
@@ -738,7 +738,7 @@
 
                 const fbHtml = p.facebook ? `
                     <a href="${finalUrl}" target="_blank" rel="noopener" class="inline-flex items-center text-xs text-blue-600 font-semibold bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded-md mt-1 transition">
-                        📘 Abrir Enlace
+                        📘 Enlace (Requiere Red)
                     </a>` : '';
                 
                 const notasHtml = p.notas ? `
@@ -795,19 +795,80 @@
             }
         });
 
-        // --- SERVICE WORKER DINÁMICO ---
+        // --- STRATEGY: ADVANCED OFFLINE SERVICE WORKER ---
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
+                // Nombre único para el almacén de memoria caché interna
+                const CACHE_NAME = 'gestor-compras-cache-v1';
+                
+                // Lista de recursos externos que la app necesita congelar para trabajar offline
+                const assetsToCache = [
+                    window.location.href,
+                    window.location.pathname,
+                    'https://cdn.tailwindcss.com',
+                    'https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js',
+                    'https://cdn-icons-png.flaticon.com/512/1162/1162499.png'
+                ];
+
                 const swCode = `
-                    self.addEventListener('install', e => self.skipWaiting());
-                    self.addEventListener('activate', e => e.waitUntil(clients.claim()));
-                    self.addEventListener('fetch', e => {
-                        e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));
+                    const CACHE_NAME = "${CACHE_NAME}";
+                    const urlsToCache = ${JSON.stringify(assetsToCache)};
+
+                    // Evento de instalación: descarga y congela los scripts esenciales
+                    self.addEventListener('install', event => {
+                        event.waitUntil(
+                            caches.open(CACHE_NAME).then(cache => {
+                                return cache.addAll(urlsToCache);
+                            }).then(() => self.skipWaiting())
+                        );
+                    });
+
+                    // Evento de activación: limpia cachés antiguas si existieran
+                    self.addEventListener('activate', event => {
+                        event.waitUntil(
+                            caches.keys().then(cacheNames => {
+                                return Promise.all(
+                                    cacheNames.map(cache => {
+                                        if (cache !== CACHE_NAME) {
+                                            return caches.delete(cache);
+                                        }
+                                    })
+                                );
+                            }).then(() => self.clients.claim())
+                        );
+                    });
+
+                    // Interceptor de red inteligente: Cache First (Si está en caché, no consumas datos de internet)
+                    self.addEventListener('fetch', event => {
+                        // Evitar interceptar llamadas que no sean GET (como analytics o APIs externas si las hubiera)
+                        if (event.request.method !== 'GET') return;
+
+                        event.respondWith(
+                            caches.match(event.request).then(cachedResponse => {
+                                if (cachedResponse) {
+                                    // Intentar actualizar la caché en segundo plano de manera asíncrona si hay red
+                                    fetch(event.request).then(networkResponse => {
+                                        if(networkResponse.status === 200) {
+                                            caches.open(CACHE_NAME).then(cache => cache.put(event.request, networkResponse));
+                                        }
+                                    }).catch(() => {});
+                                    
+                                    return cachedResponse;
+                                }
+                                
+                                // Si no está en caché, ir a la red de forma normal
+                                return fetch(event.request);
+                            })
+                        );
                     });
                 `;
+
                 const blob = new Blob([swCode], { type: 'application/javascript' });
                 const blobURL = URL.createObjectURL(blob);
-                navigator.serviceWorker.register(blobURL).catch(err => console.log('Error en SW', err));
+                
+                navigator.serviceWorker.register(blobURL)
+                    .then(reg => console.log('Service Worker Offline activo con éxito.'))
+                    .catch(err => console.error('Error registrando Service Worker:', err));
             });
         }
 
