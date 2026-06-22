@@ -53,7 +53,7 @@
                 </div>
                 
                 <div id="lista-compras" class="divide-y divide-gray-200">
-                    </div>
+                </div>
             </div>
         </section>
 
@@ -69,7 +69,7 @@
                 </div>
 
                 <div id="lista-ahorros" class="p-4 space-y-3 bg-gray-50 shadow-inner min-h-[200px]">
-                    </div>
+                </div>
             </div>
         </section>
 
@@ -85,7 +85,7 @@
                 </div>
 
                 <ul id="lista-proveedores" class="divide-y divide-gray-200 shadow-inner bg-gray-50">
-                    </ul>
+                </ul>
             </div>
         </section>
 
@@ -621,15 +621,20 @@
                             const nombreNormalizado = item.producto.toLowerCase().trim();
                             const esElMasBarato = (mejoresPreciosPorProducto[nombreNormalizado].id === item.id);
                             const tieneDuplicados = conteoProductos[nombreNormalizado] > 1;
+                            const esMejorPrecio = (esElMasBarato && tieneDuplicados);
 
                             const li = document.createElement('li');
-                            li.className = `p-4 pl-6 flex items-center justify-between transition-all cursor-pointer hover:bg-gray-50/80 ${item.comprado ? 'bg-gray-50/30 opacity-55' : 'bg-white'}`;
+                            // Se añade la clase border-l-4 border-emerald-500 si es el mejor precio
+                            li.className = `p-4 pl-6 flex items-center justify-between transition-all cursor-pointer hover:bg-gray-50/80 ${item.comprado ? 'bg-gray-50/30 opacity-55' : 'bg-white'} ${esMejorPrecio ? 'border-l-4 border-emerald-500' : ''}`;
                             li.onclick = () => openModal(item.id);
                             li.innerHTML = `
                                 <div class="flex items-center space-x-3 flex-1 min-w-0">
                                     <input type="checkbox" ${item.comprado ? 'checked' : ''} onchange="toggleCompra(${item.id})" onclick="event.stopPropagation()" class="h-5 w-5 text-indigo-600 rounded focus:ring-indigo-500 shrink-0 cursor-pointer">
                                     <div class="min-w-0 flex-1">
-                                        <p class="font-bold text-gray-800 text-base tracking-tight truncate ${item.comprado ? 'line-through text-gray-400' : ''}">${item.producto}</p>
+                                        <p class="font-bold text-gray-800 text-base tracking-tight truncate ${item.comprado ? 'line-through text-gray-400' : ''}">
+                                            ${item.producto}
+                                            ${esMejorPrecio ? '<span class="ml-2 text-[9px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-bold uppercase">Mejor Precio</span>' : ''}
+                                        </p>
                                         <p class="text-xs text-gray-500 mt-0.5">
                                             <span class="font-semibold text-indigo-600">$${item.precioUnitario.toFixed(2)}</span> × ${item.cantidad} = <span class="font-black text-gray-700">$${subtotal.toFixed(2)}</span>
                                         </p>
