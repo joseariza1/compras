@@ -2,458 +2,833 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Insumos Pro - Smart Drag & Sort</title>
-    
-    <!-- Vincular el manifiesto para que sea instalable -->
-<link rel="manifest" href="manifest.json">
-
-<!-- Registrar el Service Worker al cargar la página -->
-<script>
-    if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-            navigator.serviceWorker.register('sw.js')
-                .then(reg => console.log('Service Worker activo con éxito', reg))
-                .catch(err => console.error('Error al registrar el Service Worker', err));
-        });
-    }
-</script>
-    
-    
-    
-    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mi Gestor de Compras</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- SortableJS para permitir arrastrar y deslizar tarjetas de forma nativa en móviles -->
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
-        
-        body { 
-            font-family: 'Inter', sans-serif; 
-            background-color: #f4f4f4;
-            color: #000; 
-            margin: 0; 
-            font-size: 13px;
-            user-select: none; /* Evita selección de texto accidental al deslizar */
-        }
-
-        .tab-content { display: none; }
-        .tab-content.active { display: block; }
-
-        .shop-card {
-            background: white;
-            border: 2px solid #000;
-            border-radius: 12px;
-            margin-bottom: 20px;
-            overflow: hidden;
-            box-shadow: 0 4px 0px rgba(0,0,0,1);
-            touch-action: none; /* Optimiza el arrastre en dispositivos táctiles */
-        }
-
-        .shop-header { 
-            background: #000;
-            color: #fff;
-            padding: 12px 15px; 
-            display: flex; 
-            justify-content: space-between; 
-            align-items: center; 
-            cursor: grab;
-        }
-
-        .shop-header:active {
-            cursor: grabbing;
-        }
-        
-        .sucursal-tag { 
-            display: inline-block;
-            background: #eee;
-            padding: 2px 8px;
-            border-radius: 4px;
-            font-size: 9px; 
-            font-weight: 900; 
-            text-transform: uppercase; 
-            color: #444;
-            margin: 10px 15px 5px 15px;
-        }
-        
-        .product-row { 
-            display: flex; 
-            align-items: center; 
-            padding: 12px 15px; 
-            gap: 12px;
-            border-bottom: 1px solid #eee;
-        }
-
-        .best-price-badge {
-            background: #000;
-            color: #fff;
-            font-size: 8px;
-            font-weight: 900;
-            padding: 2px 5px;
-            border-radius: 3px;
-            margin-left: 5px;
-        }
-
-        .best-deal-row { 
-            background: #fffbeb;
-            border-left: 6px solid #000;
-        }
-
-        .bought { opacity: 0.2; filter: grayscale(1); }
-        
-        nav { 
-            position: fixed; bottom: 15px; left: 50%; transform: translateX(-50%);
-            width: 90%; max-width: 350px; 
-            background: #000; border-radius: 14px; padding: 5px; 
-            display: flex; z-index: 60;
-        }
-        .nav-btn { flex: 1; padding: 12px; border-radius: 10px; font-size: 10px; font-weight: 800; color: #fff; text-align: center; }
-        .nav-active { background: #fff; color: #000; }
-
-        .fab-main { 
-            position: fixed; bottom: 85px; right: 20px;
-            width: 50px; height: 50px; 
-            background: #000; color: #fff; 
-            border-radius: 50%; border: 3px solid #fff;
-            font-size: 24px; display: flex; align-items: center; justify-content: center; 
-            z-index: 100;
-        }
-
-        input, select, textarea { 
-            border: 2px solid #000 !important; 
-            padding: 10px !important; border-radius: 8px; font-weight: 700;
-            width: 100%;
-        }
-
-        .modal-overlay { background: rgba(0,0,0,0.8); }
-
-        /* Estilo sutil para la tarjeta que se está moviendo */
-        .sortable-ghost {
-            opacity: 0.4;
-            transform: scale(0.98);
-        }
-    </style>
+    
+    <link rel="manifest" href='data:application/json,{"name":"Gestor de Compras PWA","short_name":"Compras","start_url":".","display":"standalone","background_color":"#f3f4f6","theme_color":"#4f46e5","icons":[{"src":"https://cdn-icons-png.flaticon.com/512/1162/1162499.png","sizes":"512x512","type":"image/png"}]}'>
+    <meta name="theme-color" content="#4f46e5">
 </head>
-<body class="pb-32">
+<body class="bg-gray-100 min-h-screen font-sans antialiased text-gray-800">
 
-    <header class="p-6 pt-10 flex justify-between items-end">
-        <div>
-            <h2 class="text-[10px] font-black uppercase tracking-widest text-gray-500">Saldo Restante (Solo Mejor Opción)</h2>
-            <h1 id="budget-display" class="text-4xl font-black tracking-tighter leading-none">$0.00</h1>
-        </div>
-        <button onclick="setBudget()" class="bg-black text-white text-[9px] font-black px-3 py-2 rounded-lg uppercase tracking-wider">Presupuesto</button>
-    </header>
+    <button id="installBtn" class="hidden fixed top-4 right-4 bg-indigo-600 text-white px-4 py-2 rounded-full shadow-lg z-40 font-semibold text-sm hover:bg-indigo-700 transition">
+        📲 Instalar App
+    </button>
 
-    <div class="px-6 mb-4">
-        <input type="text" id="global-search" oninput="updateUI()" placeholder="BUSCAR..." class="uppercase text-[11px]">
-    </div>
+    <main class="max-w-4xl mx-auto p-4 pb-28 pt-6">
+        
+        <section id="sec-compras" class="space-y-4">
+            
+            <div class="grid grid-cols-3 gap-2.5">
+                <div class="bg-white p-3 rounded-xl shadow-xs border border-gray-200 text-center">
+                    <p class="text-[11px] text-gray-500 font-bold uppercase tracking-wider">💰 Total Lista</p>
+                    <p id="budget-total" class="text-base sm:text-lg font-black text-gray-800 mt-0.5">$0.00</p>
+                </div>
+                <div class="bg-white p-3 rounded-xl shadow-xs border border-gray-200 text-center">
+                    <p class="text-[11px] text-amber-600 font-bold uppercase tracking-wider">⏳ Por Comprar</p>
+                    <p id="budget-pendiente" class="text-base sm:text-lg font-black text-amber-700 mt-0.5">$0.00</p>
+                </div>
+                <div class="bg-white p-3 rounded-xl shadow-xs border border-gray-200 text-center">
+                    <p class="text-[11px] text-emerald-600 font-bold uppercase tracking-wider">✅ Comprado</p>
+                    <p id="budget-comprado" class="text-base sm:text-lg font-black text-emerald-700 mt-0.5">$0.00</p>
+                </div>
+            </div>
 
-    <main class="px-4 max-w-xl mx-auto">
-        <!-- El contenedor ahora tiene una ID para que SortableJS lo controle -->
-        <div id="compras" class="tab-content active"></div>
-        <div id="comparativa" class="tab-content">
-            <h2 class="font-black text-lg mb-4 uppercase">Comparativa de Precios</h2>
-            <div id="comparison-list" class="space-y-3"></div>
-        </div>
-        <div id="proveedores" class="tab-content"></div>
+            <div class="relative">
+                <input type="text" id="search-compras" oninput="renderAll()" placeholder="🔍 Buscar producto en tu lista..." class="w-full border p-3 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white font-medium shadow-xs">
+            </div>
+
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <div class="p-4 bg-gray-50 border-b flex justify-between items-center">
+                    <div>
+                        <h3 class="font-bold text-gray-700 text-lg">Artículos Organizados</h3>
+                        <p class="text-[10px] text-gray-400 font-medium">💡 El presupuesto solo cuenta la opción duplicada más barata</p>
+                    </div>
+                    <span id="contador-compras" class="bg-indigo-100 text-indigo-800 text-xs font-semibold px-2.5 py-0.5 rounded-full">0 pendientes</span>
+                </div>
+                
+                <div id="lista-compras" class="divide-y divide-gray-200">
+                    </div>
+            </div>
+        </section>
+
+        <section id="sec-ahorros" class="space-y-4 hidden">
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <div class="p-4 bg-gray-50 border-b">
+                    <h3 class="font-bold text-gray-700 text-lg">Guía del Comprador Inteligente</h3>
+                    <p class="text-[11px] text-gray-400 font-medium">Dónde conseguir cada producto al menor precio posible</p>
+                </div>
+                
+                <div class="p-4 bg-white border-b border-gray-100">
+                    <input type="text" id="search-ahorros" oninput="renderAll()" placeholder="🔍 Buscar en la guía de mejores precios..." class="w-full border p-3 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-gray-50 font-medium shadow-2xs">
+                </div>
+
+                <div id="lista-ahorros" class="p-4 space-y-3 bg-gray-50 shadow-inner min-h-[200px]">
+                    </div>
+            </div>
+        </section>
+
+        <section id="sec-proveedores" class="space-y-4 hidden">
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <div class="p-4 bg-gray-50 border-b">
+                    <h3 class="font-bold text-gray-700 text-lg">Mis Proveedores</h3>
+                    <p class="text-[11px] text-gray-400 font-medium">Lista de comercios ordenada alfabéticamente</p>
+                </div>
+                
+                <div class="p-4 bg-white border-b border-gray-100">
+                    <input type="text" id="search-proveedores" oninput="renderAll()" placeholder="🔍 Buscar proveedor por nombre..." class="w-full border p-3 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none bg-gray-50 font-medium shadow-2xs">
+                </div>
+
+                <ul id="lista-proveedores" class="divide-y divide-gray-200 shadow-inner bg-gray-50">
+                    </ul>
+            </div>
+        </section>
+
     </main>
 
-    <nav>
-        <button onclick="showTab('compras')" id="btn-compras" class="nav-btn nav-active">LISTA</button>
-        <button onclick="showTab('comparativa')" id="btn-comparativa" class="nav-btn">AHORRO</button>
-        <button onclick="showTab('proveedores')" id="btn-proveedores" class="nav-btn">TIENDAS</button>
+    <button onclick="openModal()" id="fab-add" class="fixed bottom-24 right-6 bg-indigo-600 text-white p-4 rounded-full shadow-2xl z-40 hover:bg-indigo-700 transition-transform active:scale-95 flex items-center justify-center w-14 h-14 text-2xl font-bold">
+        ＋
+    </button>
+
+    <div id="modal-formulario" class="hidden fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-4">
+        <div class="bg-white rounded-t-2xl sm:rounded-2xl w-full max-w-md p-6 relative shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto">
+            
+            <button onclick="closeModal()" class="absolute top-4 right-4 text-gray-400 hover:text-gray-600 text-xl font-bold p-1 z-10">✕</button>
+            
+            <div id="modal-form-compra" class="hidden">
+                <h2 id="compra-modal-title" class="text-xl font-bold text-gray-800 mb-4">Añadir a la lista</h2>
+                <form id="form-compra" class="flex flex-col gap-3" onsubmit="saveCompra(event)">
+                    <input type="hidden" id="compra-edit-id">
+                    
+                    <label class="text-sm font-medium text-gray-600">Producto</label>
+                    <input type="text" id="compra-producto" placeholder="Ej. Detergente Líquido" required class="border p-2.5 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none w-full bg-gray-50/50">
+                    
+                    <label class="text-sm font-medium text-gray-600">Proveedor y Sucursal</label>
+                    <button type="button" onclick="openProviderPicker()" id="btn-select-proveedor" class="border p-2.5 rounded-lg w-full text-left bg-white text-gray-700 flex justify-between items-center focus:ring-2 focus:ring-indigo-500 outline-none">
+                        <span id="txt-selected-proveedor" class="text-gray-400 block truncate max-w-[85%]">Seleccionar lugar de compra...</span>
+                        <span class="text-xs text-indigo-600 font-semibold shrink-0">🔍 Buscar</span>
+                    </button>
+                    <input type="hidden" id="compra-proveedor-id">
+                    <input type="hidden" id="compra-sucursal-hidden">
+                    
+                    <div class="grid grid-cols-2 gap-3 mt-1">
+                        <div>
+                            <label class="text-sm font-medium text-gray-600">Precio Unitario</label>
+                            <input type="number" id="compra-precio" placeholder="0.00" step="0.01" min="0" required class="border p-2.5 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none w-full bg-gray-50/50">
+                        </div>
+                        <div>
+                            <label class="text-sm font-medium text-gray-600">Piezas Totales</label>
+                            <input type="number" id="compra-cantidad" min="1" value="1" required class="border p-2.5 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none w-full bg-gray-50/50">
+                        </div>
+                    </div>
+                    
+                    <button type="submit" class="mt-4 bg-indigo-600 text-white py-3 rounded-lg font-medium hover:bg-indigo-700 transition w-full">
+                        Guardar en la lista
+                    </button>
+                </form>
+            </div>
+
+            <div id="modal-form-proveedor" class="hidden">
+                <h2 id="prov-modal-title" class="text-xl font-bold text-gray-800 mb-4">Nuevo Proveedor</h2>
+                <input type="hidden" id="prov-edit-id">
+                
+                <form id="form-proveedor" class="flex flex-col gap-3" onsubmit="saveProveedor(event)">
+                    <label class="text-sm font-medium text-gray-600">Nombre del Negocio</label>
+                    <input type="text" id="prov-nombre" placeholder="Ej. Distribuidora Central" required class="border p-2.5 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none w-full">
+                    
+                    <label class="text-sm font-medium text-gray-600">Link o Texto de Facebook</label>
+                    <input type="text" id="prov-facebook" placeholder="Ej. facebook.com/mi-pagina" class="border p-2.5 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none w-full">
+                    
+                    <label class="text-sm font-medium text-gray-600">Notas adicionales</label>
+                    <textarea id="prov-notas" placeholder="Horarios, contacto, etc..." class="border p-2.5 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none w-full h-20 resize-none"></textarea>
+                    
+                    <label class="text-sm font-medium text-gray-600">Agregar Sucursales</label>
+                    <div class="flex gap-2">
+                        <input type="text" id="prov-sucursal-input" placeholder="Ej. Sucursal Centro" class="border p-2.5 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none flex-1">
+                        <button type="button" onclick="addTempSucursal()" class="bg-gray-200 text-gray-700 px-3 rounded-lg font-bold hover:bg-gray-300 transition">＋</button>
+                    </div>
+                    <div id="temp-sucursales-lista" class="flex flex-wrap gap-1.5 mt-1"></div>
+                    
+                    <button type="submit" class="mt-4 bg-emerald-600 text-white py-3 rounded-lg font-medium hover:bg-emerald-700 transition w-full">
+                        Guardar Proveedor
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-picker-proveedor" class="hidden fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl w-full max-w-lg p-6 relative shadow-2xl flex flex-col max-h-[80vh]">
+            <button type="button" onclick="closeProviderPicker()" class="absolute top-4 right-4 text-gray-400 hover:text-gray-600 text-xl font-bold p-1">✕</button>
+            
+            <h3 class="text-lg font-bold text-gray-800 mb-1">Selecciona Ubicación</h3>
+            <p class="text-xs text-gray-400 mb-3">Busca tu proveedor y elige una sucursal de su cuadrícula</p>
+            
+            <input type="text" id="picker-search" oninput="renderProviderPickerList()" placeholder="🔍 Escribe el nombre del proveedor..." class="border p-2.5 rounded-xl text-sm mb-4 focus:ring-2 focus:ring-indigo-500 outline-none w-full bg-gray-50 font-medium">
+
+            <div id="grid-proveedores-picker" class="overflow-y-auto p-1 flex-1 min-h-[180px] space-y-4">
+                </div>
+            
+            <button type="button" onclick="selectPickerProvider('', 'Sin proveedor', 'Sin sucursal')" class="mt-4 w-full bg-gray-100 text-gray-700 py-3 rounded-xl text-sm font-medium hover:bg-gray-200 transition">
+                Ninguno (No asignar procedencia)
+            </button>
+        </div>
+    </div>
+
+    <nav class="fixed bottom-0 left-0 right-0 bg-indigo-600 text-white shadow-lg z-40 border-t border-indigo-500">
+        <div class="max-w-4xl mx-auto flex justify-around">
+            <button onclick="switchTab('compras')" id="tab-compras" class="flex-1 py-4 text-center font-bold bg-indigo-700 border-t-4 border-white transition text-xs sm:text-sm">
+                📋 Compras
+            </button>
+            <button onclick="switchTab('ahorros')" id="tab-ahorros" class="flex-1 py-4 text-center font-medium hover:bg-indigo-500 transition border-t-4 border-transparent text-xs sm:text-sm">
+                🥇 Súper Precios
+            </button>
+            <button onclick="switchTab('proveedores')" id="tab-proveedores" class="flex-1 py-4 text-center font-medium hover:bg-indigo-500 transition border-t-4 border-transparent text-xs sm:text-sm">
+                🤝 Proveedores
+            </button>
+        </div>
     </nav>
 
-    <button onclick="toggleFabMenu()" class="fab-main" id="fab-main-btn">+</button>
-    
-    <div id="fab-options" class="hidden fixed bottom-32 right-6 z-[110] flex flex-col gap-3">
-        <button onclick="resetAndOpen('modal-producto')" class="bg-black text-white px-5 py-3 rounded-xl font-black text-[11px] border-2 border-white shadow-2xl">NUEVO PRODUCTO</button>
-        <button onclick="resetAndOpen('modal-proveedor')" class="bg-black text-white px-5 py-3 rounded-xl font-black text-[11px] border-2 border-white shadow-2xl">NUEVA TIENDA</button>
-    </div>
-
-    <!-- MODALES -->
-    <div id="modal-producto" class="modal-overlay fixed inset-0 hidden z-[200] items-center justify-center p-4" onclick="closeModal('modal-producto')">
-        <div class="bg-white p-6 rounded-2xl w-full max-w-sm" onclick="event.stopPropagation()">
-            <h2 class="font-black text-xl mb-4">Producto</h2>
-            <input type="hidden" id="p-id">
-            <input type="text" id="p-nombre" placeholder="NOMBRE" class="uppercase">
-            <select id="p-destino" class="mt-3"></select>
-            <div class="flex gap-2 mt-3">
-                <input type="number" id="p-precio" placeholder="PRECIO $">
-                <input type="number" id="p-cant" value="1" class="w-20">
-            </div>
-            <button onclick="saveProduct()" class="w-full bg-black text-white font-black py-4 mt-6 rounded-xl text-sm">GUARDAR</button>
-            <button id="btn-del-p" onclick="deleteProduct()" class="hidden w-full text-red-600 font-black mt-4 text-xs">ELIMINAR PRODUCTO</button>
-        </div>
-    </div>
-
-    <div id="modal-proveedor" class="modal-overlay fixed inset-0 hidden z-[200] items-center justify-center p-4" onclick="closeModal('modal-proveedor')">
-        <div class="bg-white p-6 rounded-2xl w-full max-w-sm" onclick="event.stopPropagation()">
-            <h2 class="font-black text-xl mb-4">Tienda</h2>
-            <input type="hidden" id="v-id">
-            <input type="text" id="v-nombre" placeholder="NOMBRE DEL NEGOCIO" class="uppercase">
-            <input type="text" id="v-fb" placeholder="LINK (FB/WEB)">
-            <textarea id="v-notas" placeholder="NOTAS O HORARIOS" rows="2" class="mt-2 text-xs"></textarea>
-            <div id="sucursales-list" class="mt-3 space-y-2"></div>
-            <button onclick="addSucursalRow()" class="text-[10px] font-black mt-2 underline uppercase">+ Sucursal</button>
-            <button onclick="saveVendor()" class="w-full bg-black text-white font-black py-4 mt-6 rounded-xl text-sm">REGISTRAR</button>
-        </div>
-    </div>
-
     <script>
-        const initialData = {
-            budget: 0,
-            products: [],
-            vendors: [],
-            collapsed: [],
-            shopOrder: [] // Guarda el orden personalizado de las tiendas
-        };
+        let compras = JSON.parse(localStorage.getItem('pwa_compras')) || [];
+        let proveedores = JSON.parse(localStorage.getItem('pwa_proveedores')) || [];
+        let ordenCategorias = JSON.parse(localStorage.getItem('pwa_orden_categorias')) || [];
+        let currentTab = 'compras';
+        let tempSucursales = [];
 
-        let db = JSON.parse(localStorage.getItem('insumos_final_v7')) || initialData;
+        function switchTab(tab) {
+            currentTab = tab;
+            document.getElementById('sec-compras').classList.toggle('hidden', tab !== 'compras');
+            document.getElementById('sec-proveedores').classList.toggle('hidden', tab !== 'proveedores');
+            document.getElementById('sec-ahorros').classList.toggle('hidden', tab !== 'ahorros');
+            
+            const tabBtnCompras = document.getElementById('tab-compras');
+            const tabBtnProveedores = document.getElementById('tab-proveedores');
+            const tabBtnAhorros = document.getElementById('tab-ahorros');
+            const fab = document.getElementById('fab-add');
 
-        window.onload = () => {
-            updateUI();
-            initSortable();
-        };
+            closeModal();
 
-        function saveData() {
-            localStorage.setItem('insumos_final_v7', JSON.stringify(db));
-            updateUI();
-        }
+            const activeClass = "flex-1 py-4 text-center font-bold bg-indigo-700 border-t-4 border-white transition text-xs sm:text-sm";
+            const inactiveClass = "flex-1 py-4 text-center font-medium hover:bg-indigo-500 transition border-t-4 border-transparent text-xs sm:text-sm";
 
-        // Inicializa el deslizamiento de tarjetas
-        function initSortable() {
-            const el = document.getElementById('compras');
-            Sortable.create(el, {
-                animation: 200,
-                handle: '.shop-header', // El arrastre se activa desde la cabecera negra
-                ghostClass: 'sortable-ghost',
-                onEnd: function () {
-                    // Mapear el nuevo orden basado en el atributo data-shop
-                    const cards = el.querySelectorAll('.shop-card');
-                    db.shopOrder = Array.from(cards).map(card => card.getAttribute('data-shop'));
-                    localStorage.setItem('insumos_final_v7', JSON.stringify(db));
-                }
-            });
-        }
+            tabBtnCompras.className = tab === 'compras' ? activeClass : inactiveClass;
+            tabBtnAhorros.className = tab === 'ahorros' ? activeClass : inactiveClass;
+            tabBtnProveedores.className = tab === 'proveedores' ? activeClass : inactiveClass;
 
-        function resetAndOpen(modalId) {
-            if(modalId === 'modal-producto') {
-                document.getElementById('p-id').value = '';
-                document.getElementById('p-nombre').value = '';
-                document.getElementById('p-precio').value = '';
-                document.getElementById('p-cant').value = '1';
-                document.getElementById('btn-del-p').classList.add('hidden');
+            if (tab === 'compras') {
+                fab.className = "fixed bottom-24 right-6 bg-indigo-600 text-white p-4 rounded-full shadow-2xl z-40 hover:bg-indigo-700 transition-transform flex items-center justify-center w-14 h-14 text-2xl font-bold";
+                fab.classList.remove('hidden');
+            } else if (tab === 'proveedores') {
+                fab.className = "fixed bottom-24 right-6 bg-emerald-600 text-white p-4 rounded-full shadow-2xl z-40 hover:bg-emerald-700 transition-transform flex items-center justify-center w-14 h-14 text-2xl font-bold";
+                fab.classList.remove('hidden');
             } else {
-                document.getElementById('v-id').value = '';
-                document.getElementById('v-nombre').value = '';
-                document.getElementById('v-fb').value = '';
-                document.getElementById('v-notas').value = '';
-                document.getElementById('sucursales-list').innerHTML = '';
+                fab.classList.add('hidden');
             }
-            openModal(modalId);
+            window.scrollTo({top: 0, behavior: 'smooth'});
         }
 
-        function updateUI() {
-            const search = document.getElementById('global-search').value.toLowerCase();
-            const bestPrices = {};
-            const bestProductObjects = {}; 
-            
-            db.products.forEach(p => {
-                const n = p.name.toLowerCase().trim();
-                if (!bestPrices[n] || p.price < bestPrices[n]) {
-                    bestPrices[n] = p.price;
-                }
-            });
+        // --- MANEJO DEL MODAL ---
+        function openModal(id = null) {
+            if(id && id.target) id = null;
 
-            db.products.forEach(p => {
-                const n = p.name.toLowerCase().trim();
-                if (p.price === bestPrices[n]) {
-                    if (!bestProductObjects[n] || (bestProductObjects[n].bought && !p.bought)) {
-                        bestProductObjects[n] = p;
+            document.getElementById('modal-formulario').classList.remove('hidden');
+
+            if (currentTab === 'compras' || currentTab === 'ahorros') {
+                document.getElementById('modal-form-compra').classList.remove('hidden');
+                document.getElementById('modal-form-proveedor').classList.add('hidden');
+                
+                if (id) {
+                    const item = compras.find(c => c.id === id);
+                    document.getElementById('compra-modal-title').innerText = "Editar Artículo";
+                    document.getElementById('compra-edit-id').value = item.id;
+                    document.getElementById('compra-producto').value = item.producto;
+                    document.getElementById('compra-proveedor-id').value = item.proveedor;
+                    document.getElementById('compra-sucursal-hidden').value = item.sucursal;
+                    document.getElementById('compra-precio').value = item.precioUnitario;
+                    document.getElementById('compra-cantidad').value = item.cantidad;
+                    
+                    const provAsociado = proveedores.find(p => p.id === item.proveedor);
+                    const txtLabel = document.getElementById('txt-selected-proveedor');
+                    if (provAsociado) {
+                        txtLabel.innerText = `${provAsociado.nombre} (${item.sucursal})`;
+                        txtLabel.className = "text-gray-900 font-bold text-sm block truncate max-w-[85%]";
+                    } else {
+                        txtLabel.innerText = item.proveedor === "" ? "Sin proveedor" : "Seleccionar lugar de compra...";
+                        txtLabel.className = item.proveedor === "" ? "text-gray-900 font-bold text-sm block truncate max-w-[85%]" : "text-gray-400 block truncate max-w-[85%]";
                     }
+                } else {
+                    document.getElementById('compra-modal-title').innerText = "Añadir a la lista";
+                    document.getElementById('compra-edit-id').value = '';
+                    document.getElementById('form-compra').reset();
+                    document.getElementById('compra-proveedor-id').value = '';
+                    document.getElementById('compra-sucursal-hidden').value = '';
+                    document.getElementById('txt-selected-proveedor').innerText = "Seleccionar lugar de compra...";
+                    document.getElementById('txt-selected-proveedor').className = "text-gray-400 block truncate max-w-[85%]";
+                }
+            } else {
+                document.getElementById('modal-form-compra').classList.add('hidden');
+                document.getElementById('modal-form-proveedor').classList.remove('hidden');
+                
+                if (id) {
+                    const prov = proveedores.find(p => p.id === id);
+                    document.getElementById('prov-modal-title').innerText = "Editar Proveedor";
+                    document.getElementById('prov-edit-id').value = prov.id;
+                    document.getElementById('prov-nombre').value = prov.nombre;
+                    document.getElementById('prov-facebook').value = prov.facebook || '';
+                    document.getElementById('prov-notas').value = prov.notas || '';
+                    tempSucursales = [...(prov.sucursales || [])];
+                } else {
+                    document.getElementById('prov-modal-title').innerText = "Nuevo Proveedor";
+                    document.getElementById('prov-edit-id').value = '';
+                    document.getElementById('form-proveedor').reset();
+                    tempSucursales = [];
+                }
+                renderTempSucursales();
+            }
+        }
+
+        function closeModal() {
+            document.getElementById('modal-formulario').classList.add('hidden');
+            closeProviderPicker();
+        }
+
+        document.getElementById('modal-formulario').addEventListener('click', function(e) {
+            if (e.target === this) closeModal();
+        });
+
+        // --- LÓGICA DE LA LISTA SELECTORA CON BUSCADOR ---
+        function openProviderPicker() {
+            document.getElementById('modal-picker-proveedor').classList.remove('hidden');
+            document.getElementById('picker-search').value = ''; 
+            renderProviderPickerList();
+        }
+
+        function closeProviderPicker() {
+            document.getElementById('modal-picker-proveedor').classList.add('hidden');
+        }
+
+        function renderProviderPickerList() {
+            const container = document.getElementById('grid-proveedores-picker');
+            const searchInput = document.getElementById('picker-search');
+            const query = searchInput.value.toLowerCase().trim();
+            
+            container.innerHTML = '';
+            
+            if(proveedores.length === 0) {
+                container.innerHTML = `<p class="text-center py-8 text-sm text-gray-400">No tienes proveedores guardados en tu agenda.</p>`;
+                return;
+            }
+
+            const proveedoresOrdenados = [...proveedores].sort((a, b) => a.nombre.localeCompare(b.nombre));
+            const proveedoresFiltrados = proveedoresOrdenados.filter(p => p.nombre.toLowerCase().includes(query));
+
+            if(proveedoresFiltrados.length === 0) {
+                container.innerHTML = `<p class="text-center py-8 text-sm text-gray-400">No se encontraron resultados para "${searchInput.value}"</p>`;
+                return;
+            }
+
+            proveedoresFiltrados.forEach(p => {
+                const nombreLimpio = p.nombre.replace(/'/g, "\\'");
+                
+                const provBlock = document.createElement('div');
+                provBlock.className = "bg-gray-50/50 border border-gray-100 rounded-xl p-3 space-y-2 shadow-xs";
+                provBlock.innerHTML = `
+                    <p class="font-extrabold text-gray-900 text-sm flex items-center gap-1.5 tracking-tight">
+                        🏢 ${p.nombre}
+                    </p>
+                `;
+
+                const gridSucursales = document.createElement('div');
+                gridSucursales.className = "grid grid-cols-3 gap-2";
+
+                if (!p.sucursales || p.sucursales.length === 0) {
+                    gridSucursales.innerHTML = `
+                        <button type="button" onclick="selectPickerProvider('${p.id}', '${nombreLimpio}', 'Matriz')" class="p-2 bg-white border border-gray-200 rounded-xl text-[11px] font-bold text-gray-600 hover:bg-indigo-50 hover:border-indigo-300 hover:text-indigo-700 active:scale-95 transition-all h-12 flex items-center justify-center text-center shadow-2xs italic">
+                            📍 Matriz
+                        </button>
+                    `;
+                } else {
+                    p.sucursales.forEach(sucursal => {
+                        const sucLimpia = sucursal.replace(/'/g, "\\'");
+                        gridSucursales.innerHTML += `
+                            <button type="button" onclick="selectPickerProvider('${p.id}', '${nombreLimpio}', '${sucLimpia}')" class="p-2 bg-white border border-gray-200 rounded-xl text-[11px] font-bold text-amber-700 hover:bg-indigo-50 hover:border-indigo-300 hover:text-indigo-700 active:scale-95 transition-all h-12 flex items-center justify-center text-center shadow-2xs" title="${sucursal}">
+                                <span class="line-clamp-2 leading-tight">📍 ${sucursal}</span>
+                            </button>
+                        `;
+                    });
+                }
+
+                provBlock.appendChild(gridSucursales);
+                container.appendChild(provBlock);
+            });
+        }
+
+        function selectPickerProvider(id, nombre, sucursal) {
+            document.getElementById('compra-proveedor-id').value = id;
+            document.getElementById('compra-sucursal-hidden').value = id ? sucursal : '';
+            
+            const txtLabel = document.getElementById('txt-selected-proveedor');
+            if (id) {
+                txtLabel.innerText = `${nombre} (${sucursal})`;
+                txtLabel.className = "text-gray-900 font-bold text-sm block truncate max-w-[85%]";
+            } else {
+                txtLabel.innerText = "Sin proveedor";
+                txtLabel.className = "text-gray-900 font-bold text-sm block truncate max-w-[85%]";
+            }
+            closeProviderPicker();
+        }
+
+        // --- GESTIÓN TEMPORAL DE SUCURSALES ---
+        function addTempSucursal() {
+            const input = document.getElementById('prov-sucursal-input');
+            const valor = input.value.trim();
+            if(valor) {
+                tempSucursales.push(valor);
+                input.value = '';
+                renderTempSucursales();
+            }
+        }
+
+        function removeTempSucursal(index) {
+            tempSucursales.splice(index, 1);
+            renderTempSucursales();
+        }
+
+        function renderTempSucursales() {
+            const container = document.getElementById('temp-sucursales-lista');
+            container.innerHTML = tempSucursales.map((suc, index) => `
+                <span class="inline-flex items-center text-xs bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-full font-medium">
+                    📍 ${suc}
+                    <button type="button" onclick="removeTempSucursal(${index})" class="ml-1.5 text-emerald-600 hover:text-emerald-900 font-bold">✕</button>
+                </span>
+            `).join('');
+        }
+
+        // --- PERSISTENCIA ---
+        function saveData() {
+            localStorage.setItem('pwa_compras', JSON.stringify(compras));
+            localStorage.setItem('pwa_proveedores', JSON.stringify(proveedores));
+            renderAll();
+        }
+
+        // --- GESTIÓN DE COMPRAS ---
+        function saveCompra(e) {
+            e.preventDefault();
+            const id = document.getElementById('compra-edit-id').value;
+            const producto = document.getElementById('compra-producto').value.trim();
+            const proveedorId = document.getElementById('compra-proveedor-id').value;
+            const sucursal = document.getElementById('compra-sucursal-hidden').value || 'Sin sucursal';
+            const precioUnitario = parseFloat(document.getElementById('compra-precio').value) || 0;
+            const cantidad = parseInt(document.getElementById('compra-cantidad').value) || 1;
+
+            if (id) {
+                compras = compras.map(item => item.id == id ? { 
+                    ...item, producto, proveedor: proveedorId, sucursal, precioUnitario, cantidad 
+                } : item);
+            } else {
+                compras.push({ 
+                    id: Date.now(), 
+                    producto, 
+                    proveedor: proveedorId, 
+                    sucursal, 
+                    precioUnitario, 
+                    cantidad, 
+                    comprado: false 
+                });
+            }
+            
+            document.getElementById('form-compra').reset();
+            closeModal();
+            saveData();
+        }
+
+        function toggleCompra(id) {
+            compras = compras.map(item => item.id === id ? { ...item, comprado: !item.comprado } : item);
+            saveData();
+        }
+
+        function deleteCompra(id) {
+            compras = compras.filter(item => item.id !== id);
+            saveData();
+        }
+
+        // --- GESTIÓN DE PROVEEDORES ---
+        function saveProveedor(e) {
+            e.preventDefault();
+            const id = document.getElementById('prov-edit-id').value;
+            const nombre = document.getElementById('prov-nombre').value.trim();
+            const facebook = document.getElementById('prov-facebook').value.trim();
+            const notas = document.getElementById('prov-notas').value.trim();
+
+            const providerData = {
+                id: id || Date.now().toString(),
+                nombre,
+                facebook,
+                notas,
+                sucursales: [...tempSucursales]
+            };
+
+            if (id) {
+                proveedores = proveedores.map(p => p.id === id ? providerData : p);
+            } else {
+                proveedores.push(providerData);
+            }
+
+            document.getElementById('form-proveedor').reset();
+            tempSucursales = [];
+            closeModal();
+            saveData();
+        }
+
+        function deleteProveedor(id) {
+            if(confirm('¿Seguro que deseas eliminar este proveedor?')) {
+                proveedores = proveedores.filter(p => p.id !== id);
+                compras = compras.map(c => c.proveedor === id ? { ...c, proveedor: "", sucursal: "Sin sucursal" } : c);
+                saveData();
+            }
+        }
+
+        // --- RENDERIZADO GENERAL ---
+        function renderAll() {
+            
+            // 1. EVALUAR MEJORES PRECIOS Y CONTAR DUPLICADOS EN TIEMPO REAL
+            const mejoresPreciosPorProducto = {};
+            const conteoProductos = {};
+
+            compras.forEach(item => {
+                const nombreNormalizado = item.producto.toLowerCase().trim();
+                conteoProductos[nombreNormalizado] = (conteoProductos[nombreNormalizado] || 0) + 1;
+                
+                if (!mejoresPreciosPorProducto[nombreNormalizado] || item.precioUnitario < mejoresPreciosPorProducto[nombreNormalizado].precioUnitario) {
+                    mejoresPreciosPorProducto[nombreNormalizado] = item;
                 }
             });
 
-            const gastadoInteligente = db.products.reduce((acc, p) => {
-                const n = p.name.toLowerCase().trim();
-                const esElMasBaratoRegistrado = bestProductObjects[n] && bestProductObjects[n].id === p.id;
-                if (!p.bought && esElMasBaratoRegistrado) {
-                    return acc + (p.price * p.qty);
+            // 2. CÁLCULO DE PRESUPUESTO
+            let acumuladoTotal = 0;
+            let acumuladoPendiente = 0;
+            let acumuladoComprado = 0;
+
+            compras.forEach(item => {
+                const nombreNormalizado = item.producto.toLowerCase().trim();
+                const esElMasBarato = (mejoresPreciosPorProducto[nombreNormalizado].id === item.id);
+                
+                if (esElMasBarato) {
+                    const subtotal = item.precioUnitario * item.cantidad;
+                    acumuladoTotal += subtotal;
+                    if(item.comprado) acumuladoComprado += subtotal;
+                    else acumuladoPendiente += subtotal;
                 }
-                return acc;
-            }, 0);
+            });
 
-            document.getElementById('budget-display').innerText = `$${(db.budget - gastadoInteligente).toLocaleString()}`;
+            document.getElementById('budget-total').innerText = `$${acumuladoTotal.toFixed(2)}`;
+            document.getElementById('budget-pendiente').innerText = `$${acumuladoPendiente.toFixed(2)}`;
+            document.getElementById('budget-comprado').innerText = `$${acumuladoComprado.toFixed(2)}`;
+            document.getElementById('contador-compras').innerText = `${compras.filter(c => !c.comprado).length} pendientes`;
 
-            // Listar y filtrar tiendas de la lista de compras
-            const container = document.getElementById('compras');
-            container.innerHTML = '';
-            const filtered = db.products.filter(p => p.name.toLowerCase().includes(search));
-            
-            let shops = [...new Set(filtered.map(p => p.shop))];
+            // 3. FILTRADO Y AGRUPACIÓN DE LA LISTA DE COMPRAS INTERACTIVA
+            const listaComprasEl = document.getElementById('lista-compras');
+            listaComprasEl.innerHTML = '';
 
-            // Aplicar orden personalizado si existe en memoria
-            if (db.shopOrder && db.shopOrder.length > 0) {
-                shops.sort((a, b) => {
-                    let idxA = db.shopOrder.indexOf(a);
-                    let idxB = db.shopOrder.indexOf(b);
-                    if (idxA === -1) idxA = 999;
-                    if (idxB === -1) idxB = 999;
-                    return idxA - idxB;
+            const searchQuery = document.getElementById('search-compras').value.toLowerCase().trim();
+            const comprasFiltradas = compras.filter(item => item.producto.toLowerCase().includes(searchQuery));
+
+            if (compras.length === 0) {
+                listaComprasEl.innerHTML = `<p class="p-8 text-gray-400 text-center text-sm">Tu lista está vacía. ¡Usa el botón ＋ para empezar!</p>`;
+            } else if (comprasFiltradas.length === 0) {
+                listaComprasEl.innerHTML = `<p class="p-8 text-gray-400 text-center text-sm">No hay productos que coincidan con "${searchQuery}"</p>`;
+            } else {
+                const mapaAgrupado = {};
+
+                comprasFiltradas.forEach(item => {
+                    const provId = item.proveedor || 'sin-proveedor';
+                    const provAsociado = proveedores.find(p => p.id === item.proveedor);
+                    const provNombre = provAsociado ? provAsociado.nombre : '🏢 Artículos sin Proveedor';
+                    const sucursalNombre = item.proveedor ? item.sucursal : '📍 Ubicación general';
+
+                    if (!mapaAgrupado[provId]) {
+                        mapaAgrupado[provId] = { nombre: provNombre, sucursales: {} };
+                    }
+                    if (!mapaAgrupado[provId].sucursales[sucursalNombre]) {
+                        mapaAgrupado[provId].sucursales[sucursalNombre] = [];
+                    }
+                    mapaAgrupado[provId].sucursales[sucursalNombre].push(item);
+                });
+
+                const categoriasOrdenadas = Object.keys(mapaAgrupado).sort((a, b) => {
+                    const indexA = ordenCategorias.indexOf(a);
+                    const indexB = ordenCategorias.indexOf(b);
+                    if (indexA === -1 && indexB === -1) return 0;
+                    if (indexA === -1) return 1;
+                    if (indexB === -1) return -1;
+                    return indexA - indexB;
+                });
+
+                categoriasOrdenadas.forEach(provId => {
+                    const grupoProveedor = mapaAgrupado[provId];
+                    
+                    const provContainer = document.createElement('div');
+                    provContainer.className = "bg-gray-50/40 border-b border-gray-200 last:border-b-0 py-1";
+                    provContainer.setAttribute('data-id', provId);
+                    
+                    provContainer.innerHTML = `
+                        <div class="bg-indigo-50/80 px-4 py-2.5 font-black text-xs text-indigo-900 uppercase tracking-wider border-b border-indigo-100/60 flex items-center justify-between select-none active:cursor-grabbing">
+                            <span class="flex items-center gap-2">
+                                <span class="text-indigo-400 text-sm font-normal">⋮⋮</span> ${grupoProveedor.nombre}
+                            </span>
+                        </div>
+                    `;
+
+                    Object.keys(grupoProveedor.sucursales).forEach(sucNombre => {
+                        const productos = grupoProveedor.sucursales[sucNombre];
+                        const sucBlock = document.createElement('div');
+                        sucBlock.className = "border-b border-gray-100 last:border-0";
+                        
+                        sucBlock.innerHTML = `
+                            <div class="bg-amber-50/60 px-5 py-1.5 font-bold text-[11px] text-amber-800 tracking-tight flex items-center gap-1 select-none">
+                                📍 ${sucNombre}
+                            </div>
+                        `;
+
+                        const ulProductos = document.createElement('ul');
+                        ulProductos.className = "divide-y divide-gray-100 bg-white";
+
+                        productos.forEach(item => {
+                            const subtotal = item.precioUnitario * item.cantidad;
+                            const nombreNormalizado = item.producto.toLowerCase().trim();
+                            
+                            const esElMasBarato = (mejoresPreciosPorProducto[nombreNormalizado].id === item.id);
+                            const tieneDuplicados = conteoProductos[nombreNormalizado] > 1;
+
+                            let badgePrecioHtml = '';
+                            let highlightBordeClass = '';
+                            
+                            if (tieneDuplicados) {
+                                if (esElMasBarato) {
+                                    badgePrecioHtml = `<span class="bg-emerald-100 text-emerald-800 text-[10px] font-extrabold px-1.5 py-0.5 rounded border border-emerald-200 shrink-0">⭐ Mejor Opción</span>`;
+                                    highlightBordeClass = 'border-l-4 border-emerald-500';
+                                } else {
+                                    badgePrecioHtml = `<span class="bg-gray-100 text-gray-400 text-[10px] font-medium px-1.5 py-0.5 rounded border border-gray-200 shrink-0">Alternativa más cara</span>`;
+                                }
+                            }
+
+                            const li = document.createElement('li');
+                            li.className = `p-4 pl-6 flex items-center justify-between transition-all cursor-pointer hover:bg-gray-50/80 ${item.comprado ? 'bg-gray-50/30 opacity-55' : 'bg-white'} ${highlightBordeClass}`;
+                            
+                            li.onclick = () => openModal(item.id);
+
+                            li.innerHTML = `
+                                <div class="flex items-center space-x-3 flex-1 min-w-0">
+                                    <input type="checkbox" ${item.comprado ? 'checked' : ''} onchange="toggleCompra(${item.id})" onclick="event.stopPropagation()" class="h-5 w-5 text-indigo-600 rounded focus:ring-indigo-500 shrink-0 cursor-pointer">
+                                    <div class="min-w-0 flex-1">
+                                        <div class="flex items-center gap-2 flex-wrap">
+                                            <p class="font-bold text-gray-800 text-base tracking-tight truncate ${item.comprado ? 'line-through text-gray-400' : ''}">${item.producto}</p>
+                                            ${badgePrecioHtml}
+                                        </div>
+                                        <p class="text-xs text-gray-500 mt-0.5">
+                                            <span class="font-semibold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">${item.cantidad} pzas</span> 
+                                            × $${item.precioUnitario.toFixed(2)} = <span class="font-black text-gray-700">$${subtotal.toFixed(2)}</span>
+                                            ${(tieneDuplicados && !esElMasBarato) ? '<span class="text-red-500 text-[11px] block sm:inline sm:ml-1 font-medium">(No sumado al presupuesto total)</span>' : ''}
+                                        </p>
+                                    </div>
+                                </div>
+                                <button onclick="event.stopPropagation(); deleteCompra(${item.id})" class="text-red-400 hover:text-red-600 text-sm p-2 shrink-0 transition-colors">❌</button>
+                            `;
+                            ulProductos.appendChild(li);
+                        });
+
+                        sucBlock.appendChild(ulProductos);
+                        provContainer.appendChild(sucBlock);
+                    });
+
+                    listaComprasEl.appendChild(provContainer);
                 });
             }
 
-            shops.forEach(shopName => {
-                const isCollapsed = db.collapsed.includes(shopName);
-                const shopItems = filtered.filter(p => p.shop === shopName);
-                const shopTotal = shopItems.filter(p => !p.bought).reduce((acc, p) => acc + (p.price * p.qty), 0);
-                
-                const card = document.createElement('div');
-                card.className = "shop-card";
-                card.setAttribute('data-shop', shopName); // Atributo clave para guardar orden
-                
-                let h = `
-                    <div class="shop-header">
-                        <div class="flex flex-col" onclick="toggleCollapse('${shopName}')" style="flex:1;">
-                            <span class="font-black text-[11px] uppercase tracking-wider">☰ ${shopName}</span>
-                            <span class="text-[9px] font-bold opacity-80">Total Tienda: $${shopTotal.toLocaleString()}</span>
-                        </div>
-                        <span onclick="toggleCollapse('${shopName}')" class="text-[10px] font-black border border-white/30 px-2 py-0.5 rounded ml-2">${isCollapsed ? 'VER' : 'OK'}</span>
-                    </div>
-                    <div class="${isCollapsed ? 'hidden' : ''} pb-2">`;
+            // 4. RENDER DE SECCIÓN: SECCIÓN DE MEJORES PRECIOS ("SÚPER PRECIOS") WITH SEARCH
+            const listaAhorrosEl = document.getElementById('lista-ahorros');
+            listaAhorrosEl.innerHTML = '';
+            
+            const productosUnicosArray = Object.values(mejoresPreciosPorProducto);
 
-                const sucsInShop = [...new Set(shopItems.map(p => p.suc))];
-                sucsInShop.forEach(sucName => {
-                    h += `<div class="sucursal-tag">${sucName}</div>`;
-                    
-                    // CAMBIO AQUÍ: Ordenar por defecto los productos por precio (Menor a Mayor)
-                    const orderedItems = shopItems.filter(p => p.suc === sucName).sort((a,b) => a.price - b.price);
-                    
-                    orderedItems.forEach(p => {
-                        const n = p.name.toLowerCase().trim();
-                        const isBest = p.price === bestPrices[n] && db.products.filter(x => x.name.toLowerCase().trim() === n).length > 1;
-                        h += `
-                            <div class="product-row ${p.bought ? 'bought' : ''} ${isBest && !p.bought ? 'best-deal-row' : ''}">
-                                <input type="checkbox" ${p.bought ? 'checked' : ''} onchange="toggleBought('${p.id}')" class="w-5 h-5 accent-black">
-                                <div class="flex-1" onclick="editProduct('${p.id}')">
-                                    <p class="text-[12px] font-black m-0 uppercase">${p.name} ${isBest && !p.bought ? '<span class="best-price-badge">Ahorro</span>' : ''}</p>
-                                    <p class="text-[10px] font-bold text-gray-500">$${p.price} x ${p.qty}</p>
-                                </div>
-                                <p class="font-black text-sm">$${(p.price*p.qty).toLocaleString()}</p>
-                            </div>`;
+            if (productosUnicosArray.length === 0) {
+                listaAhorrosEl.innerHTML = `<p class="p-8 text-gray-400 text-center text-sm bg-white rounded-xl">No hay productos en tu lista de compras para analizar.</p>`;
+            } else {
+                productosUnicosArray.sort((a,b) => a.producto.localeCompare(b.producto));
+
+                const queryAhorros = document.getElementById('search-ahorros').value.toLowerCase().trim();
+                const ahorrosFiltrados = productosUnicosArray.filter(item => item.producto.toLowerCase().includes(queryAhorros));
+
+                if (ahorrosFiltrados.length === 0) {
+                    listaAhorrosEl.innerHTML = `<p class="p-8 text-gray-400 text-center text-sm bg-white rounded-xl">No se encontraron productos que coincidan con "${queryAhorros}"</p>`;
+                } else {
+                    ahorrosFiltrados.forEach(bestItem => {
+                        const nombreNormalizado = bestItem.producto.toLowerCase().trim();
+                        const provAsociado = proveedores.find(p => p.id === bestItem.proveedor);
+                        const provNombre = provAsociado ? provAsociado.nombre : '🏢 Artículos sin Proveedor';
+                        const sucNombre = bestItem.proveedor ? bestItem.sucursal : '📍 Ubicación general';
+                        
+                        const todasLasVariantes = compras.filter(c => c.producto.toLowerCase().trim() === nombreNormalizado);
+                        let calculoAhorroHtml = '';
+                        
+                        if(todasLasVariantes.length > 1) {
+                            const preciosVariantes = todasLasVariantes.map(v => v.precioUnitario);
+                            const precioMaximo = Math.max(...preciosVariantes);
+                            const ahorroUnitario = precioMaximo - bestItem.precioUnitario;
+                            
+                            if(ahorroUnitario > 0) {
+                                calculoAhorroHtml = `
+                                    <div class="mt-1.5 inline-block bg-emerald-50 text-emerald-700 text-[11px] font-bold px-2 py-0.5 rounded-md border border-emerald-100">
+                                        📉 Ahorras $${ahorroUnitario.toFixed(2)} por pieza aquí
+                                    </div>
+                                `;
+                            }
+                        }
+
+                        const card = document.createElement('div');
+                        card.className = "bg-white p-4 rounded-xl border border-gray-200 shadow-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2.5 hover:border-indigo-300 transition-all";
+                        card.innerHTML = `
+                            <div>
+                                <h4 class="font-black text-gray-800 text-base tracking-tight">${bestItem.producto}</h4>
+                                <p class="text-xs text-gray-500 mt-0.5">
+                                    Adquirir en: <span class="font-extrabold text-indigo-600">${provNombre}</span> 
+                                    <span class="text-gray-400">(${sucNombre})</span>
+                                </p>
+                                ${calculoAhorroHtml}
+                            </div>
+                            <div class="sm:text-right shrink-0">
+                                <p class="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Mejor precio pieza</p>
+                                <p class="text-xl font-black text-emerald-600">$${bestItem.precioUnitario.toFixed(2)}</p>
+                                <span class="text-[10px] text-gray-400 block font-medium">Basado en ${todasLasVariantes.length} opciones agregadas</span>
+                            </div>
+                        `;
+                        listaAhorrosEl.appendChild(card);
                     });
-                });
-                card.innerHTML = h + `</div>`;
-                container.appendChild(card);
-            });
+                }
+            }
 
-            // Tiendas
-            document.getElementById('proveedores').innerHTML = db.vendors.map(v => `
-                <div class="bg-white border-2 border-black p-4 rounded-xl mb-4">
-                    <div class="flex justify-between items-start border-b-2 border-black pb-2 mb-2">
-                        <h3 class="font-black text-sm uppercase">${v.name}</h3>
-                        <div class="flex gap-4">
-                            <button onclick="editVendor('${v.id}')" class="text-[10px] font-black underline">EDITAR</button>
-                            <button onclick="deleteVendor('${v.id}')" class="text-[10px] font-black text-red-600 underline">BORRAR</button>
+            // 5. RENDER LISTA DE PROVEEDORES (ORDENADOS ALFABÉTICAMENTE + CON BUSCADOR)
+            const listaProvEl = document.getElementById('lista-proveedores');
+            listaProvEl.innerHTML = '';
+            
+            if(proveedores.length === 0) {
+                listaProvEl.innerHTML = `<p class="p-8 text-gray-400 text-center text-sm bg-white">No tienes proveedores guardados. ¡Usa el botón ＋!</p>`;
+                return;
+            }
+
+            // Ordenamiento alfabético nativo (A-Z)
+            const proveedoresOrdenados = [...proveedores].sort((a, b) => a.nombre.localeCompare(b.nombre));
+
+            // Filtro aplicado desde el nuevo buscador de proveedores
+            const queryProveedores = document.getElementById('search-proveedores').value.toLowerCase().trim();
+            const proveedoresFiltrados = proveedoresOrdenados.filter(p => p.nombre.toLowerCase().includes(queryProveedores));
+
+            if(proveedoresFiltrados.length === 0) {
+                listaProvEl.innerHTML = `<p class="p-8 text-gray-400 text-center text-sm bg-white">No se encontraron proveedores que coincidan con "${queryProveedores}"</p>`;
+                return;
+            }
+
+            proveedoresFiltrados.forEach(p => {
+                let finalUrl = p.facebook;
+                if (finalUrl && !/^https?:\/\//i.test(finalUrl)) {
+                    finalUrl = 'https://' + finalUrl;
+                }
+
+                const fbHtml = p.facebook ? `
+                    <a href="${finalUrl}" target="_blank" rel="noopener" class="inline-flex items-center text-xs text-blue-600 font-semibold bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded-md mt-1 transition">
+                        📘 Abrir Enlace
+                    </a>` : '';
+                
+                const notasHtml = p.notas ? `
+                    <div class="mt-2 text-xs text-gray-600 bg-gray-50 p-2.5 rounded-lg border-l-4 border-emerald-400 whitespace-pre-wrap">${p.notas}</div>` : '';
+
+                let sucursalesHtml = '';
+                if(p.sucursales && p.sucursales.length > 0) {
+                    sucursalesHtml = `
+                        <div class="mt-2.5">
+                            <div class="flex flex-wrap gap-1">
+                                ${p.sucursales.map(s => `<span class="text-xs bg-white text-gray-700 px-2 py-0.5 rounded border border-gray-200 shadow-2xs">📍 ${s}</span>`).join('')}
+                            </div>
+                        </div>`;
+                }
+
+                const li = document.createElement('li');
+                li.className = "p-4 bg-white border-b border-gray-100 flex flex-col justify-between transition-all hover:bg-gray-50/50";
+                li.innerHTML = `
+                    <div class="flex justify-between items-start w-full">
+                        <div class="flex-1">
+                            <p class="font-bold text-gray-900 text-base tracking-tight">${p.nombre}</p>
+                            ${fbHtml}
+                            ${notasHtml}
+                            ${sucursalesHtml}
+                        </div>
+                        <div class="flex gap-1 shrink-0 ml-4">
+                            <button onclick="openModal('${p.id}')" class="text-indigo-600 hover:bg-indigo-50 p-2 rounded-lg text-sm transition-colors">✏️</button>
+                            <button onclick="deleteProveedor('${p.id}')" class="text-red-400 hover:text-red-500 p-2 rounded-lg text-sm transition-colors">❌</button>
                         </div>
                     </div>
-                    ${v.fb ? `<p class="text-[10px] font-bold mb-1">🔗 <span class="underline">${v.fb}</span></p>` : ''}
-                    ${v.notas ? `<p class="text-[10px] text-gray-600 font-medium mb-3 bg-gray-50 p-2 rounded border border-dashed border-gray-300 italic">"${v.notas}"</p>` : ''}
-                    <div class="flex flex-wrap gap-2">
-                        ${v.sucursales.map(s => `<span class="bg-black text-white px-2 py-1 rounded text-[8px] font-black uppercase">${s}</span>`).join('')}
-                    </div>
-                </div>`).join('');
-
-            // Comparativa
-            const productNames = [...new Set(db.products.map(p => p.name.toLowerCase().trim()))];
-            document.getElementById('comparison-list').innerHTML = productNames.map(name => {
-                const options = db.products.filter(p => p.name.toLowerCase().trim() === name).sort((a,b) => a.price - b.price);
-                return `<div class="bg-white border-2 border-black/10 p-3 rounded-xl">
-                    <h4 class="font-black text-[9px] uppercase mb-2 text-gray-400">${name}</h4>
-                    ${options.map(o => `<div class="flex justify-between text-[11px] py-1 ${o.price === bestPrices[name] ? 'font-black' : 'text-gray-400'}">
-                        <span>${o.shop} (${o.suc})</span><span>$${o.price} ${o.price === bestPrices[name] ? '🏆' : ''}</span>
-                    </div>`).join('')}</div>`;
-            }).join('');
-
-            const sel = document.getElementById('p-destino');
-            sel.innerHTML = '<option value="" disabled selected>ELEGIR TIENDA</option>';
-            db.vendors.forEach(v => {
-                const group = document.createElement('optgroup'); group.label = v.name;
-                if(v.sucursales.length === 0) group.appendChild(new Option("PRINCIPAL", `${v.name}|PRINCIPAL`));
-                else v.sucursales.forEach(s => group.appendChild(new Option(s, `${v.name}|${s}`)));
-                sel.appendChild(group);
+                `;
+                listaProvEl.appendChild(li);
             });
         }
 
-        function showTab(id) {
-            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-            document.getElementById(id).classList.add('active');
-            document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('nav-active'));
-            document.getElementById('btn-' + id).classList.add('nav-active');
+        // Ejecutar primer render de la aplicación
+        renderAll();
+
+        // --- INICIALIZACIÓN DE DRAG & DROP (SORTABLEJS) ---
+        const contenedorLista = document.getElementById('lista-compras');
+        Sortable.create(contenedorLista, {
+            animation: 200,
+            delay: 300,
+            delayOnTouchOnly: true,
+            touchStartThreshold: 5,
+            ghostClass: "bg-indigo-100/60",
+            chosenClass: "shadow-xl",
+            
+            onEnd: function () {
+                const bloquesHijos = Array.from(contenedorLista.children);
+                ordenCategorias = bloquesHijos.map(hijo => hijo.getAttribute('data-id')).filter(id => id);
+                localStorage.setItem('pwa_orden_categorias', JSON.stringify(ordenCategorias));
+                renderAll();
+            }
+        });
+
+        // --- SERVICE WORKER DINÁMICO ---
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                const swCode = `
+                    self.addEventListener('install', e => self.skipWaiting());
+                    self.addEventListener('activate', e => e.waitUntil(clients.claim()));
+                    self.addEventListener('fetch', e => {
+                        e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));
+                    });
+                `;
+                const blob = new Blob([swCode], { type: 'application/javascript' });
+                const blobURL = URL.createObjectURL(blob);
+                navigator.serviceWorker.register(blobURL).catch(err => console.log('Error en SW', err));
+            });
         }
-        function openModal(id) { 
-            document.getElementById(id).classList.remove('hidden'); 
-            document.getElementById(id).classList.add('flex');
-            if(!document.getElementById('fab-options').classList.contains('hidden')) toggleFabMenu();
-        }
-        function closeModal(id) { document.getElementById(id).classList.add('hidden'); document.getElementById(id).classList.remove('flex'); }
-        function toggleCollapse(shop) { db.collapsed.includes(shop) ? db.collapsed = db.collapsed.filter(s => s !== shop) : db.collapsed.push(shop); saveData(); }
-        function toggleBought(id) { const p = db.products.find(x => x.id === id); p.bought = !p.bought; saveData(); }
-        function setBudget() { const val = prompt("Dinero disponible:", db.budget); if(val !== null) { db.budget = parseFloat(val) || 0; saveData(); } }
-        function addSucursalRow(val = "") {
-            const div = document.createElement('div');
-            div.className = "flex gap-2";
-            div.innerHTML = `<input type="text" value="${val}" class="suc-input !mt-0 flex-1" placeholder="NOMBRE SUCURSAL"><button onclick="this.parentElement.remove()" class="font-black px-2">×</button>`;
-            document.getElementById('sucursales-list').appendChild(div);
-        }
-        function saveVendor() {
-            const name = document.getElementById('v-nombre').value.trim();
-            if(!name) return;
-            const sucs = Array.from(document.querySelectorAll('.suc-input')).map(i => i.value.trim()).filter(v => v);
-            const vendor = { id: document.getElementById('v-id').value || Date.now().toString(), name, fb: document.getElementById('v-fb').value, notas: document.getElementById('v-notas').value, sucursales: sucs };
-            const idx = db.vendors.findIndex(v => v.id === vendor.id);
-            idx > -1 ? db.vendors[idx] = vendor : db.vendors.push(vendor);
-            closeModal('modal-proveedor'); saveData();
-        }
-        function saveProduct() {
-            const name = document.getElementById('p-nombre').value.trim();
-            const dest = document.getElementById('p-destino').value;
-            const price = parseFloat(document.getElementById('p-precio').value);
-            if(!name || !dest || isNaN(price)) return;
-            const [shop, suc] = dest.split('|');
-            const prod = { id: document.getElementById('p-id').value || Date.now().toString(), name, shop, suc, price, qty: parseInt(document.getElementById('p-cant').value) || 1, bought: false };
-            const idx = db.products.findIndex(p => p.id === prod.id);
-            idx > -1 ? db.products[idx] = prod : db.products.push(prod);
-            closeModal('modal-producto'); saveData();
-        }
-        function editVendor(id) {
-            const v = db.vendors.find(x => x.id === id);
-            document.getElementById('v-id').value = v.id;
-            document.getElementById('v-nombre').value = v.name;
-            document.getElementById('v-fb').value = v.fb;
-            document.getElementById('v-notas').value = v.notas;
-            document.getElementById('sucursales-list').innerHTML = '';
-            v.sucursales.forEach(s => addSucursalRow(s));
-            openModal('modal-proveedor');
-        }
-        function editProduct(id) {
-            const p = db.products.find(x => x.id === id);
-            document.getElementById('p-id').value = p.id;
-            document.getElementById('p-nombre').value = p.name;
-            document.getElementById('p-precio').value = p.price;
-            document.getElementById('p-cant').value = p.qty;
-            document.getElementById('p-destino').value = `${p.shop}|${p.suc}`;
-            document.getElementById('btn-del-p').classList.remove('hidden');
-            openModal('modal-producto');
-        }
-        function deleteVendor(id) { if(confirm("¿Borrar tienda?")) { db.vendors = db.vendors.filter(v => v.id !== id); saveData(); } }
-        function deleteProduct() { if(confirm("¿Borrar producto?")) { db.products = db.products.filter(p => p.id !== document.getElementById('p-id').value); closeModal('modal-producto'); saveData(); } }
-        function toggleFabMenu() {
-            const menu = document.getElementById('fab-options');
-            menu.classList.toggle('hidden');
-            document.getElementById('fab-main-btn').innerText = menu.classList.contains('hidden') ? '+' : '×';
-        }
+
+        // --- BOTÓN DE INSTALACIÓN PWA ---
+        let deferredPrompt;
+        const installBtn = document.getElementById('installBtn');
+
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            installBtn.classList.remove('hidden');
+        });
+
+        installBtn.addEventListener('click', async () => {
+            if (deferredPrompt) {
+                deferredPrompt.prompt();
+                const { outcome } = await deferredPrompt.userChoice;
+                if (outcome === 'accepted') installBtn.classList.add('hidden');
+                deferredPrompt = null;
+            }
+        });
     </script>
 </body>
 </html>
